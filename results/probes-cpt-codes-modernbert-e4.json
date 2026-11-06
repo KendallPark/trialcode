@@ -1,0 +1,30 @@
+{
+  "trained": {
+    "dx_from_context": {
+      "recall@10": 0.2242683710756661,
+      "mrr": 0.12493297142937984,
+      "popularity_recall@10": 0.10792357878734593,
+      "n_admissions": 4997,
+      "frac_gold_backoff": 0.0009238573564241681
+    },
+    "neighbours": {
+      "n_codes": 5824,
+      "same_category@10": 0.4953640103340149,
+      "same_chapter@10": 0.7724931240081787
+    }
+  },
+  "untrained_init": {
+    "dx_from_context": {
+      "recall@10": 0.0016742135769537933,
+      "mrr": 0.0010326526727977734,
+      "popularity_recall@10": 0.10792357878734593,
+      "n_admissions": 4997,
+      "frac_gold_backoff": 0.0009238573564241681
+    },
+    "neighbours": {
+      "n_codes": 5824,
+      "same_category@10": 0.37491413950920105,
+      "same_chapter@10": 0.690573513507843
+    }
+  }
+}
