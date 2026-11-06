@@ -108,7 +108,8 @@ def _dictionary_titles(root):
 
 def code_vocabulary(root, min_count=2, kinds=KINDS):
     """Code-token vocabulary: codes seen in >= `min_count` admissions, plus every ICD prefix ancestor
-    of any code seen at all (so rarer codes can back off to, and inherit from, an ancestor).
+    of any code seen at all, pruned to category roots and branching points (so rarer codes can back off
+    to, and inherit from, an ancestor).
 
     Entries: token, kind, icd_version, code, title, count, parent (token or None), ancestor (bool).
     """
@@ -134,10 +135,29 @@ def code_vocabulary(root, min_count=2, kinds=KINDS):
             entry(r.kind, r.icd_version, r.icd_code, r.title, r.count, ancestor=False)
         for anc in code_ancestors(r.kind, r.icd_version, r.icd_code):
             entry(r.kind, r.icd_version, anc, dict_titles.get((r.kind, r.icd_version, anc), ""), r.count, ancestor=True)
-    for e in entries.values():
+    # Prune ancestors that are only a chain link: keep an ancestor if it is a category root or
+    # has >= 2 kept branches below it (a single-child chain adds a token but no information).
+    below = {t: set() for t in entries}
+    kept = set()
+    for e in sorted(entries.values(), key=lambda e: -len(e["code"])):
         anc = code_ancestors(e["kind"], e["icd_version"], e["code"])
-        e["parent"] = code_token(e["kind"], e["icd_version"], anc[0]) if anc else None
-    return list(entries.values())
+        root = _MIN_PREFIX.get((e["kind"], e["icd_version"]))
+        if not e["ancestor"] or len(e["code"]) == root or len(below[e["token"]]) >= 2:
+            kept.add(e["token"])
+            up = {e["token"]}
+        else:
+            up = below[e["token"]]
+        if anc:
+            below[code_token(e["kind"], e["icd_version"], anc[0])] |= up
+    out = []
+    for e in entries.values():
+        if e["token"] not in kept:
+            continue
+        e["parent"] = next((code_token(e["kind"], e["icd_version"], a) for a in
+                            code_ancestors(e["kind"], e["icd_version"], e["code"])
+                            if code_token(e["kind"], e["icd_version"], a) in kept), None)
+        out.append(e)
+    return out
 
 
 def _generate(root, variant):

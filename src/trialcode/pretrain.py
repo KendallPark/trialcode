@@ -34,12 +34,13 @@ def main():
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--grad-accum", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--run-name", default=None)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--no-wandb", action="store_true")
     a = p.parse_args()
 
     set_seed(a.seed)
-    run_name = f"cpt-{a.variant}-{a.model.split('/')[-1]}"
+    run_name = a.run_name or f"cpt-{a.variant}-{a.model.split('/')[-1]}"
     out = a.output_dir or os.path.join("outputs", run_name)
 
     tok = AutoTokenizer.from_pretrained(a.model)
