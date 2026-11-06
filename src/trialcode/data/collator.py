@@ -40,28 +40,18 @@ class CodeAwareMLMCollator:
         return selected
 
     def __call__(self, features):
-        L = max(len(f["input_ids"]) for f in features)
-        if self.pad_to_multiple_of:
-            L = -(-L // self.pad_to_multiple_of) * self.pad_to_multiple_of
-        pad, mask_id, V = self.tok.pad_token_id, self.tok.mask_token_id, len(self.tok)
-        input_ids, labels, attn = [], [], []
-        for f in features:
-            ids = list(f["input_ids"])
-            sel = self._select(ids, f["code_group"], f["code_part"])
-            lab = [t if s else -100 for t, s in zip(ids, sel)]
-            for i, s in enumerate(sel):
-                if s:
-                    r = random.random()
-                    if r < 0.8:
-                        ids[i] = mask_id
-                    elif r < 0.9:
-                        ids[i] = random.randrange(V)
-            n = len(ids)
-            input_ids.append(ids + [pad] * (L - n))
-            labels.append(lab + [-100] * (L - n))
-            attn.append([1] * n + [0] * (L - n))
-        return {
-            "input_ids": torch.tensor(input_ids),
-            "attention_mask": torch.tensor(attn),
-            "labels": torch.tensor(labels),
-        }
+        batch = self.tok.pad({"input_ids": [f["input_ids"] for f in features]},
+                             pad_to_multiple_of=self.pad_to_multiple_of, return_tensors="pt")
+        L, mask_id, V = batch["input_ids"].shape[1], self.tok.mask_token_id, len(self.tok)
+        labels = torch.full((len(features), L), -100)
+        for b, f in enumerate(features):
+            ids = batch["input_ids"][b]
+            sel = torch.tensor(self._select(f["input_ids"], f["code_group"], f["code_part"]))
+            n = len(f["input_ids"])
+            labels[b, :n][sel] = ids[:n][sel]
+            r = torch.rand(n)
+            ids[:n][sel & (r < 0.8)] = mask_id
+            rand = sel & (r >= 0.8) & (r < 0.9)
+            ids[:n][rand] = torch.randint(V, (int(rand.sum()),))
+        batch["labels"] = labels
+        return batch

@@ -16,7 +16,7 @@ A "code" is a dict {kind, icd_version, code, title}; `icd_version` is the code-s
 import os
 
 import pandas as pd
-from datasets import Dataset
+from datasets import Dataset, Features, Value, load_dataset
 
 VARIANTS = ("all", "structured", "codes")
 KINDS = ("diagnosis", "procedure", "drg", "hcpcs", "drug", "lab")  # order within an admission
@@ -25,8 +25,12 @@ VARIANT_KINDS = {"codes": _ICD_KINDS, "structured": KINDS, "all": KINDS}
 _PREFIX = {"diagnosis": "DX", "procedure": "PX", "drg": "DRG", "hcpcs": "HCPCS", "drug": "RX", "lab": "LAB"}
 
 
-def _read(root, rel, **kw):
-    return pd.read_csv(os.path.join(root, rel), dtype=str, **kw)
+def _read(root, rel, usecols=None):
+    """Read a MIMIC csv(.gz) with HF datasets (all columns as str: ICD-9 codes like '0389' keep their zeros)."""
+    path = os.path.join(root, rel)
+    cols = [c for c in pd.read_csv(path, nrows=0).columns if usecols is None or c in usecols]
+    features = Features({c: Value("string") for c in cols})
+    return load_dataset("csv", data_files=path, split="train", usecols=cols, features=features).to_pandas()
 
 
 def _frame(df, kind, hadm_id, code, title, version="0", seq=None):
