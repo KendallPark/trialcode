@@ -10,7 +10,7 @@ from transformers import (AutoModelForMaskedLM, AutoTokenizer, Trainer, Training
 
 from trialcode import tracking  # noqa: F401  (loads .env for W&B)
 from trialcode.data.collator import CodeAwareMLMCollator
-from trialcode.data.mimic import code_vocabulary, load_mimic, split_by_subject
+from trialcode.data.mimic import VARIANT_KINDS, code_vocabulary, load_mimic, split_by_subject
 from trialcode.data.tokenize import make_tokenize_fn
 from trialcode.data.vocab import add_code_tokens, description_examples
 
@@ -49,7 +49,7 @@ def main():
     model = AutoModelForMaskedLM.from_pretrained(a.model, sparse_prediction=True)  # loss on masked positions only
     vocab = []
     if a.code_tokens:
-        vocab = code_vocabulary(a.mimic_root, a.min_code_count)
+        vocab = code_vocabulary(a.mimic_root, a.min_code_count, VARIANT_KINDS[a.variant])
         add_code_tokens(tok, model, vocab)
         print(f"added {len(vocab)} code tokens")
     kw = dict(max_length=a.max_length, max_code_tokens=a.max_code_tokens, code_tokens=a.code_tokens)
