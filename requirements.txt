@@ -1,2 +1,10 @@
 wandb>=0.31,<1
 python-dotenv>=1.0,<2
+# torch: install the ROCm build for Strix Halo (gfx1151) first:
+#   pip install --index-url https://repo.amd.com/rocm/whl/gfx1151/ torch
+transformers>=5,<6
+datasets>=5,<6
+accelerate>=1.15
+pandas>=3
+pyarrow
+numpy
