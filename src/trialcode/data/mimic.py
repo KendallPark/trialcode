@@ -88,20 +88,56 @@ def code_token(kind, icd_version, code):
     return f"[{_PREFIX[kind]}{ver}:{str(code).replace(' ', '_')}]"
 
 
-def code_vocabulary(root, min_count=5, kinds=KINDS):
-    """Codes seen in at least `min_count` admissions, with titles, as the code-token vocabulary."""
+# Shortest prefix that is still a meaningful ancestor (ICD category level); other kinds have no hierarchy.
+_MIN_PREFIX = {("diagnosis", "9"): 3, ("diagnosis", "10"): 3, ("procedure", "9"): 2, ("procedure", "10"): 3}
+
+
+def code_ancestors(kind, icd_version, code):
+    """Prefix ancestors of an ICD code, nearest first (E1165 -> E116, E11). Empty for other kinds."""
+    n = _MIN_PREFIX.get((kind, str(icd_version)))
+    return [] if n is None else [code[:i] for i in range(len(code) - 1, n - 1, -1)]
+
+
+def _dictionary_titles(root):
+    out = {}
+    for kind, d in (("diagnosis", "d_icd_diagnoses"), ("procedure", "d_icd_procedures")):
+        df = _read(root, f"hosp/{d}.csv.gz", usecols=["icd_code", "icd_version", "long_title"])
+        out.update({(kind, r.icd_version, r.icd_code): r.long_title or "" for r in df.itertuples()})
+    return out
+
+
+def code_vocabulary(root, min_count=2, kinds=KINDS):
+    """Code-token vocabulary: codes seen in >= `min_count` admissions, plus every ICD prefix ancestor
+    of any code seen at all (so rarer codes can back off to, and inherit from, an ancestor).
+
+    Entries: token, kind, icd_version, code, title, count, parent (token or None), ancestor (bool).
+    """
     codes = load_admission_codes(root, kinds)
     codes["title"] = codes["long_title"].fillna("")
     codes["kind"] = codes["kind"].astype(str)
-    g = codes.groupby(["kind", "icd_version", "icd_code"], sort=True).agg(
+    used = codes.groupby(["kind", "icd_version", "icd_code"], sort=True).agg(
         count=("hadm_id", "nunique"), title=("title", "first")).reset_index()
-    g = g[g["count"] >= min_count]
-    vocab = {}
-    for r in g.itertuples():
-        tok = code_token(r.kind, r.icd_version, r.icd_code)
-        vocab.setdefault(tok, {"token": tok, "kind": r.kind, "icd_version": r.icd_version,
-                               "code": r.icd_code, "title": r.title, "count": int(r.count)})
-    return list(vocab.values())
+    dict_titles = _dictionary_titles(root)
+
+    entries = {}
+    def entry(kind, ver, code, title, count, ancestor):
+        tok = code_token(kind, ver, code)
+        e = entries.setdefault(tok, {"token": tok, "kind": kind, "icd_version": ver, "code": code,
+                                     "title": title, "count": 0, "ancestor": ancestor})
+        e["count"] += count
+        if not ancestor:
+            e["ancestor"], e["title"] = False, title
+        return e
+
+    for r in used.itertuples():
+        if r.count >= min_count:
+            entry(r.kind, r.icd_version, r.icd_code, r.title, r.count, ancestor=False)
+        for anc in code_ancestors(r.kind, r.icd_version, r.icd_code):
+            entry(r.kind, r.icd_version, anc, dict_titles.get((r.kind, r.icd_version, anc), ""), r.count, ancestor=True)
+    for e in entries.values():
+        anc = code_ancestors(e["kind"], e["icd_version"], e["code"])
+        e["parent"] = code_token(e["kind"], e["icd_version"], anc[0]) if anc else None
+    return list(entries.values())
 
 
 def _generate(root, variant):

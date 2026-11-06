@@ -11,7 +11,7 @@ Per-token side channels (used by CodeAwareMLMCollator):
     code_group  0 = ordinary text, k>0 = the k-th code in the section
     code_part   1 = code identifier tokens, 2 = title tokens (0 for ordinary text)
 """
-from .mimic import code_token
+from .mimic import code_ancestors, code_token
 
 CODE_PART_ID, CODE_PART_TITLE = 1, 2
 
@@ -19,12 +19,15 @@ CODE_PART_ID, CODE_PART_TITLE = 1, 2
 def _encode_codes(tokenizer, codes, max_tokens, code_tokens, include_titles, vocab):
     ids, group, part = [], [], []
     for k, c in enumerate(codes, start=1):
-        tok = code_token(c["kind"], c["icd_version"], c["code"])
-        if tok in vocab:
-            cid = [vocab[tok]]
-        elif code_tokens and not include_titles:
-            continue  # code-token-only sequences skip codes outside the vocabulary
-        else:
+        cid = None
+        for code in (c["code"], *code_ancestors(c["kind"], c["icd_version"], c["code"])):
+            tok = code_token(c["kind"], c["icd_version"], code)
+            if tok in vocab:  # own token, else back off to the nearest ancestor that has one
+                cid = [vocab[tok]]
+                break
+        if cid is None:
+            if code_tokens and not include_titles:
+                continue  # code-token-only sequences skip codes with no token or ancestor
             cid = tokenizer(f" {c['code']}", add_special_tokens=False)["input_ids"]
         title = (tokenizer(f" {c['title']};", add_special_tokens=False)["input_ids"]
                  if include_titles else [])

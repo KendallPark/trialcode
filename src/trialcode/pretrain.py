@@ -12,7 +12,7 @@ from trialcode import tracking  # noqa: F401  (loads .env for W&B)
 from trialcode.data.collator import CodeAwareMLMCollator
 from trialcode.data.mimic import VARIANT_KINDS, code_vocabulary, load_mimic, split_by_subject
 from trialcode.data.tokenize import make_tokenize_fn
-from trialcode.data.vocab import add_code_tokens, description_examples
+from trialcode.data.vocab import add_code_tokens, description_examples, save_vocab
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     p.add_argument("--code-prob", type=float, default=0.5)
     p.add_argument("--code-tokens", action=argparse.BooleanOptionalAction, default=True,
                    help="one vocabulary token per code (else codes are spelled as text)")
-    p.add_argument("--min-code-count", type=int, default=5, help="min admissions for a code to get a token")
+    p.add_argument("--min-code-count", type=int, default=2, help="min admissions for a code to get its own token")
     p.add_argument("--no-titles", action="store_true", help="drop code descriptions from admission sequences")
     p.add_argument("--max-train-examples", type=int, default=None, help="debug subsampling")
     p.add_argument("--epochs", type=float, default=1.0)
@@ -94,7 +94,10 @@ def main():
         data_collator=CodeAwareMLMCollator(tok, code_prob=a.code_prob),
     )
     trainer.train()
-    trainer.save_model(os.path.join(out, "final"))
+    final = os.path.join(out, "final")
+    trainer.save_model(final)
+    if vocab:
+        save_vocab(vocab, final)  # needed to re-attach the code hierarchy when loading
 
 
 if __name__ == "__main__":
