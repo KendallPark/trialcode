@@ -35,6 +35,7 @@ def main():
     p.add_argument("--grad-accum", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--run-name", default=None)
+    p.add_argument("--resume", action="store_true", help="resume from the latest checkpoint in --output-dir")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--no-wandb", action="store_true")
     a = p.parse_args()
@@ -94,7 +95,7 @@ def main():
         train_dataset=splits["train"], eval_dataset=splits["validation"],
         data_collator=CodeAwareMLMCollator(tok, code_prob=a.code_prob),
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=True if a.resume else None)
     final = os.path.join(out, "final")
     trainer.save_model(final)
     if vocab:
