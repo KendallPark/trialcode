@@ -8,3 +8,4 @@ accelerate>=1.15
 pandas>=3
 pyarrow
 numpy
+pytest>=8
