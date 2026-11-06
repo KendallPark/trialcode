@@ -4,5 +4,5 @@ __pycache__/
 wandb/
 .env
 *.env
-data/
-outputs/
+/data/
+/outputs/
