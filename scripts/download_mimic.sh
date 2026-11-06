@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Download only the MIMIC files we use. Requires credentialed PhysioNet access (MIMIC-IV and
 # MIMIC-IV-Note DUAs signed). Usage: PHYSIONET_USER=you scripts/download_mimic.sh [dest]
-# wget prompts for your PhysioNet password.
+# Credentials come from ~/.netrc (machine physionet.org ...) if present, else wget prompts for the password.
 #   --extra   also fetch the tables for the structured/all variants (DRG, HCPCS, prescriptions, labevents)
 #   --no-notes   skip MIMIC-IV-Note (only needed for the "all" variant)
 set -euo pipefail
@@ -11,7 +11,10 @@ DEST="${ARGS[0]:-data/mimic}"
 IV=https://physionet.org/files/mimiciv/3.1
 NOTE=https://physionet.org/files/mimic-iv-note/2.2
 mkdir -p "$DEST/hosp" "$DEST/note"
-get() { wget -c -N --user "$PHYSIONET_USER" --ask-password -P "$2" "$1"; }
+get() {
+  if [ -f "$HOME/.netrc" ]; then wget -c -N -P "$2" "$1"  # credentials from ~/.netrc (chmod 600)
+  else wget -c -N --user "$PHYSIONET_USER" --ask-password -P "$2" "$1"; fi
+}
 for f in diagnoses_icd procedures_icd d_icd_diagnoses d_icd_procedures admissions; do
   get "$IV/hosp/$f.csv.gz" "$DEST/hosp"
 done
