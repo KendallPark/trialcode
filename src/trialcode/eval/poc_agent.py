@@ -10,6 +10,9 @@ exact-code micro precision/recall/F1 against the expert reference sets:
   +model     agent codes plus, per criterion, the k diagnosis tokens nearest (cosine over the model's
              composed input embeddings) to the mean embedding of the seeds, same ICD version only
   model_only the same k neighbours without the seeds (how much the model finds by itself)
+
+With --dump the candidate neighbours (with ICD titles) are written for the agent to read; with --keep
+(json {criterion id: "code code ..."}, dotless) the agent's picks are scored as "+filtered@k".
 """
 import argparse
 import gzip
@@ -79,9 +82,14 @@ def main():
     ap.add_argument("model")
     ap.add_argument("mimic_root")
     ap.add_argument("--k", type=int, nargs="+", default=[10, 25])
+    ap.add_argument("--dump", help="write candidate neighbours (max k) with titles to this json")
+    ap.add_argument("--keep", help="json of the agent's picks among the candidates")
     a = ap.parse_args()
 
     d = pd.read_csv(f"{a.mimic_root}/hosp/d_icd_diagnoses.csv.gz", dtype=str)
+    titles = dict(zip(zip(d.icd_version, d.icd_code), d.long_title))
+    keep = json.load(open(a.keep)) if a.keep else {}
+    dump = defaultdict(dict)
     dicts = {v: set(d[d.icd_version == v].icd_code) for v in ("9", "10")}
     vocab = load_vocab(a.model)
     tok = AutoTokenizer.from_pretrained(a.model)
@@ -110,7 +118,11 @@ def main():
                 for k in a.k:
                     neigh[k] = [dx[ver][i]["code"] for i in order if dx[ver][i]["code"] not in agent][:k]
             conds = {"agent": agent}
+            if a.dump and neigh:
+                dump[r["id"]][ver] = [[c, titles.get((ver, c), "")] for c in neigh[max(a.k)]]
             for k in a.k:
+                if a.keep:
+                    conds[f"+filtered@{k}"] = agent | (set(neigh.get(k, [])) & set(keep.get(r["id"], "").split()))
                 conds[f"+model@{k}"] = agent | set(neigh.get(k, []))
                 conds[f"model_only@{k}"] = set(neigh.get(k, []))
             for cond, pred in conds.items():
@@ -119,6 +131,8 @@ def main():
                     c[0] += len(pred & ref)
                     c[1] += len(pred)
                     c[2] += len(ref)
+    if a.dump:
+        json.dump(dump, open(a.dump, "w"))
     print(f"{'condition':16s} {'system':6s}   P      R      F1     (pred / ref)")
     for (cond, system), (tp, npred, nref) in sorted(counts.items(), key=lambda kv: (kv[0][1], kv[0][0])):
         m = prf(tp, npred, nref)
