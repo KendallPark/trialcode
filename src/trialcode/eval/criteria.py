@@ -1,6 +1,8 @@
 """Build the trial-criteria eval set from the paper's criteria table (docs/paper/40.docx).
 
-    python -m trialcode.eval.criteria docs/paper/40.docx data/eval/trial_criteria.jsonl
+    python -m trialcode.eval.criteria docs/paper/40.docx data/eval/trial_criteria [--push-to-hub org/name]
+
+Saves a HuggingFace dataset (load_from_disk) plus a jsonl copy alongside it.
 
 One row per criterion: trial, tier, text, and the reference code set split by system. A model is
 evaluated on whether it retrieves/embeds a criterion's codes together (and, with MIMIC, whether
@@ -11,6 +13,8 @@ import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
+
+from datasets import Dataset, Features, Sequence, Value
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 ICD10 = re.compile(r"^[A-TV-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$")
@@ -49,15 +53,30 @@ def split_codes(text):
     return {k: sorted(set(v)) for k, v in out.items()}
 
 
-def main(src, dst):
-    rows = read_rows(src)[1:]
-    with open(dst, "w") as f:
-        for r in rows:
-            cid, trial, tier, text, codes = [c.strip() for c in r[:5]]
-            f.write(json.dumps({"id": cid, "trial": re.sub(r"\(.*", "", trial).strip(" _"), "tier": int(tier),
-                                "criterion": text, "codes": split_codes(codes), "raw_codes": codes}) + "\n")
-    print(f"wrote {len(rows)} criteria to {dst}")
+SYSTEMS = ["icd10", "icd9", "icd9pcs", "icd10pcs", "rxnorm", "loinc"]
+FEATURES = Features({"id": Value("string"), "trial": Value("string"), "tier": Value("int32"),
+                     "criterion": Value("string"), "raw_codes": Value("string"),
+                     "codes": {k: Sequence(Value("string")) for k in SYSTEMS}})
+
+
+def build(src):
+    recs = []
+    for r in read_rows(src)[1:]:
+        cid, trial, tier, text, codes = [c.strip() for c in r[:5]]
+        recs.append({"id": cid, "trial": re.sub(r"\(.*", "", trial).strip(" _"), "tier": int(tier),
+                     "criterion": text, "raw_codes": codes, "codes": split_codes(codes)})
+    return Dataset.from_list(recs, features=FEATURES)
+
+
+def main(src, dst, hub=None):
+    ds = build(src)
+    ds.save_to_disk(dst)
+    ds.to_json(dst + ".jsonl")
+    print(f"wrote {len(ds)} criteria to {dst}")
+    if hub:
+        ds.push_to_hub(hub, private=True)
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    args = sys.argv[1:]
+    main(args[0], args[1], args[3] if len(args) > 3 and args[2] == "--push-to-hub" else None)
